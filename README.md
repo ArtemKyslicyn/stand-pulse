@@ -1,55 +1,45 @@
 # Stand Pulse
 
-Дежурный MCP-клиент к живому стенду. Не каталог echo-инструментов, а **вахта**: сторож снимает `/health` и рейтинг моделей, открывает инциденты и держит периодическую сводку в SQLite.
+**Дежурство стенда.** Пока модели отвечают посетителям, этот MCP-сервер сидит на вахте: падение `/health`, рост задержки, модели с жалобами. Агент или CLI спрашивают не «какие есть tools», а **можно ли отойти**.
 
-Подключаешь агента или этот CLI — спрашиваешь «что на вахте?» вместо ручного обхода API.
+Сервер: [AIChallenge](https://github.com/ArtemKyslicyn/AIChallenge) (`apps/mcp`).  
+Консоль: `/?shell=mcp` — блок «Сейчас» говорит, что делать.
 
-Сервер: [AIChallenge](https://github.com/ArtemKyslicyn/AIChallenge) (`apps/mcp`).
+## Продукт
 
-## Зачем это
+| Кто | Работа |
+|---|---|
+| Оператор стенда | Открыл экран перед уходом: жив ли стенд, кого ругают, крутится ли ночная сводка |
+| Агент | Тот же контур через MCP: `watch_brief` → действие (`probe`, `ack`, `schedule`) |
+| CLI | То же с ноутбука, без браузера |
 
-Стенд с моделями падает не «красиво»: health молчит, одна модель начинает собирать down-votes, задержка ползёт. `watch_brief` собирает это в один экран:
+Правило вахты:
 
-- `critical` — стенд не отвечает
-- `warning` — высокая задержка или модель на внимании
-- `ok` — спокойно, есть тренд latency
+1. Стенд молчит → `critical`, не оставляйте без присмотра  
+2. Есть неподтверждённый инцидент → подтвердите, что видели  
+3. Нет расписания → включите ежечасный обход  
+4. Иначе → можно отойти
 
-Инцидент можно подтвердить (`pulse ack`), сводку крутить 24/7 (`pulse schedule`).
+Инциденты живут в SQLite: `stand_down`, `high_latency`, `model_attention`. Сводка пишется по таймеру, даже когда консоль закрыта.
 
 ## Команды
 
 ```bash
 pip install -e .
-# или: uv sync
 
 export MCP_URL=https://aichallenge.arcilite.ru/mcp
-export MCP_SHARED_TOKEN=   # Bearer, не в git
+export MCP_SHARED_TOKEN=   # не в git
 
-pulse watch                 # вахта: severity + инциденты
-pulse probe                 # живой /health
-pulse history               # последние пробы
+pulse watch
+pulse probe
 pulse schedule --every 3600 --note night-watch
-pulse digest
-pulse ack <incident_id> --note "вижу, чиню"
-pulse list
+pulse ack <incident_id>
 ```
 
-Локально, без токена (рядом должен быть монорепо AIChallenge):
+Рядом с монорепо, без токена:
 
 ```bash
 pulse --stdio watch
-pulse --stdio list
 ```
 
-Токен в вывод не печатается.
-
-## Инструменты сервера
-
-| Инструмент | Роль |
-|---|---|
-| `watch_brief` | Главный: severity, открытые инциденты, Δ latency |
-| `probe_stand` | `/api/v1/health` + задержка |
-| `model_pulse` | Pareto + down-votes |
-| `ack_incident` | Оператор увидел инцидент |
-| `probe_history` | История проб в SQLite |
-| `schedule_digest` / `latest_digest` / `list_jobs` | Периодический агрегат 24/7 |
+Демо: [`demo.mp4`](demo.mp4)
